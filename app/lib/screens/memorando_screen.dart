@@ -66,7 +66,7 @@ class _MemorandoScreenState extends State<MemorandoScreen> {
         'dados_memo': dadosMemo,
       });
 
-      final arquivo = await _arquivoService.salvarDocx(
+      final arquivo = await _arquivoService.salvarArquivo(
         bytes,
         'Memorando ${_numero.text.trim()}-${_ano.text.trim()}.docx',
       );

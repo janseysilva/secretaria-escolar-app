@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.secretariaescolar.secretaria_escolar"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

@@ -7,14 +7,17 @@ opcionais) e recebe o .docx pronto de volta - nada fica salvo no
 servidor entre um pedido e outro."""
 
 import base64
+import io
 import os
 import tempfile
 import uuid
+import zipfile
 
-from fastapi import Body, FastAPI
+from fastapi import Body, FastAPI, Request
 from fastapi.responses import Response
 
 import documentos
+import relatorio_bolsa_familia
 
 app = FastAPI(title="Secretaria Escolar API")
 
@@ -134,3 +137,85 @@ def gerar_historico_escolar(payload: dict = Body(...)):
         dados_escola = _preparar_dados_escola(payload.get("dados_escola"), pasta_temp)
         return _gerar_resposta_docx(
             documentos.gerar_historico_escolar, dados_escola, payload.get("dados_historico", {}))
+
+
+@app.post("/gerar/bolsa-familia")
+async def gerar_bolsa_familia(request: Request):
+    """Diferente dos outros documentos, esse recebe arquivos de verdade
+    (os PDFs de frequência, agrupados por mês, mais a lista de alunos do
+    Bolsa Família) via multipart, não JSON. Cada "mes" enviado pelo app
+    vem num campo "grupo_0", "grupo_1" etc. (um arquivo pode repetir o
+    mesmo nome de campo - da mesma forma que a versao de PC deixa
+    adicionar varias pastas de mes). Devolve um .zip com os formatos
+    escolhidos (xlsx/docx/pdf), ja que pode ser mais de um arquivo de
+    uma vez so."""
+    form = await request.form()
+
+    try:
+        percentual_minimo = float(str(form.get("percentual_minimo", "60")).replace(",", "."))
+    except ValueError:
+        percentual_minimo = 60.0
+
+    formatos = []
+    if str(form.get("formato_xlsx", "")).lower() == "true":
+        formatos.append("xlsx")
+    if str(form.get("formato_docx", "")).lower() == "true":
+        formatos.append("docx")
+    if str(form.get("formato_pdf", "")).lower() == "true":
+        formatos.append("pdf")
+    if not formatos:
+        return Response(content="Selecione ao menos um formato.", status_code=400)
+
+    arquivo_lista_upload = form.get("arquivo_lista")
+    if arquivo_lista_upload is None:
+        return Response(content="Falta o arquivo da lista do Bolsa Família.", status_code=400)
+
+    with tempfile.TemporaryDirectory() as raiz_temp:
+        caminho_lista = os.path.join(raiz_temp, arquivo_lista_upload.filename)
+        with open(caminho_lista, "wb") as f:
+            f.write(await arquivo_lista_upload.read())
+
+        chaves_grupo = sorted({chave for chave in form.keys() if chave.startswith("grupo_")})
+        if not chaves_grupo:
+            return Response(content="Adicione ao menos um mês com PDFs de frequência.", status_code=400)
+
+        pastas = []
+        for chave in chaves_grupo:
+            pasta_mes = os.path.join(raiz_temp, chave)
+            os.makedirs(pasta_mes, exist_ok=True)
+            for arquivo in form.getlist(chave):
+                caminho = os.path.join(pasta_mes, arquivo.filename)
+                with open(caminho, "wb") as f:
+                    f.write(await arquivo.read())
+            pastas.append(pasta_mes)
+
+        try:
+            resultados, meses, _resumo = relatorio_bolsa_familia.analisar(
+                pastas, caminho_lista, percentual_minimo, log=lambda *a, **k: None)
+        except Exception as e:
+            return Response(content=str(e), status_code=400)
+
+        nome_base = relatorio_bolsa_familia.sugerir_nome(meses)
+        arquivos_saida = []
+        if "xlsx" in formatos:
+            caminho = os.path.join(raiz_temp, f"{nome_base}.xlsx")
+            relatorio_bolsa_familia.gerar_xlsx(resultados, caminho, percentual_minimo, meses)
+            arquivos_saida.append(caminho)
+        if "docx" in formatos:
+            caminho = os.path.join(raiz_temp, f"{nome_base}.docx")
+            relatorio_bolsa_familia.gerar_docx(resultados, caminho, percentual_minimo, meses)
+            arquivos_saida.append(caminho)
+        if "pdf" in formatos:
+            caminho = os.path.join(raiz_temp, f"{nome_base}.pdf")
+            relatorio_bolsa_familia.gerar_pdf(resultados, caminho, percentual_minimo, meses)
+            arquivos_saida.append(caminho)
+
+        buffer_zip = io.BytesIO()
+        with zipfile.ZipFile(buffer_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for caminho in arquivos_saida:
+                zf.write(caminho, os.path.basename(caminho))
+        conteudo_zip = buffer_zip.getvalue()
+
+    return Response(
+        content=conteudo_zip, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{nome_base}.zip"'})
