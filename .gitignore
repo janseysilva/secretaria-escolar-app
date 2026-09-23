@@ -1,0 +1,8 @@
+# Backend (Python)
+backend/__pycache__/
+backend/*.pyc
+backend/.venv/
+
+# Nao versionar apk/aab gerados (grandes, so entregues direto ao Jansey)
+*.apk
+*.aab
