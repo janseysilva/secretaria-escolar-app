@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/config_service.dart';
 import '../theme.dart';
@@ -12,12 +15,16 @@ class DadosEscolaScreen extends StatefulWidget {
 
 class _DadosEscolaScreenState extends State<DadosEscolaScreen> {
   final _configService = ConfigService();
+  final _picker = ImagePicker();
   final _nomeEscola = TextEditingController();
   final _secretaria = TextEditingController();
   final _diretorNome = TextEditingController();
   final _diretorCargo = TextEditingController();
   final _cidade = TextEditingController();
   bool _carregando = true;
+
+  String? _logoBase64;
+  String? _assinaturaBase64;
 
   @override
   void initState() {
@@ -32,7 +39,20 @@ class _DadosEscolaScreenState extends State<DadosEscolaScreen> {
     _diretorNome.text = dados['diretor_nome'] ?? '';
     _diretorCargo.text = dados['diretor_cargo'] ?? '';
     _cidade.text = dados['cidade'] ?? '';
+    _logoBase64 = dados['logo_base64'];
+    _assinaturaBase64 = dados['assinatura_base64'];
     setState(() => _carregando = false);
+  }
+
+  Future<void> _escolherImagem(void Function(String? novoBase64) definir) async {
+    final imagem = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 900,
+      imageQuality: 85,
+    );
+    if (imagem == null) return;
+    final bytes = await imagem.readAsBytes();
+    setState(() => definir(base64Encode(bytes)));
   }
 
   Future<void> _salvar() async {
@@ -48,12 +68,60 @@ class _DadosEscolaScreenState extends State<DadosEscolaScreen> {
       'diretor_nome': _diretorNome.text.trim(),
       'diretor_cargo': _diretorCargo.text.trim(),
       'cidade': _cidade.text.trim(),
+      'logo_base64': _logoBase64,
+      'assinatura_base64': _assinaturaBase64,
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Dados da escola salvos.')),
     );
     Navigator.of(context).pop();
+  }
+
+  Widget _campoImagem({
+    required String rotulo,
+    required String? base64Atual,
+    required void Function(String? novoBase64) definir,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(rotulo, style: const TextStyle(fontWeight: FontWeight.bold, color: corTexto)),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            if (base64Atual != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.memory(
+                  base64Decode(base64Atual),
+                  width: 56, height: 56, fit: BoxFit.cover,
+                ),
+              )
+            else
+              Container(
+                width: 56, height: 56,
+                decoration: BoxDecoration(
+                  color: corFundo,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: corTextoFraco),
+                ),
+                child: Icon(Icons.image_outlined, color: corTextoFraco),
+              ),
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: () => _escolherImagem(definir),
+              child: Text(base64Atual == null ? 'Escolher imagem' : 'Trocar'),
+            ),
+            if (base64Atual != null)
+              TextButton(
+                onPressed: () => setState(() => definir(null)),
+                child: const Text('Remover', style: TextStyle(color: Colors.red)),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -98,6 +166,18 @@ class _DadosEscolaScreenState extends State<DadosEscolaScreen> {
           TextField(
             controller: _cidade,
             decoration: const InputDecoration(labelText: 'Cidade'),
+          ),
+          const SizedBox(height: 20),
+          _campoImagem(
+            rotulo: 'Logo/Brasão (opcional)',
+            base64Atual: _logoBase64,
+            definir: (v) => _logoBase64 = v,
+          ),
+          const SizedBox(height: 16),
+          _campoImagem(
+            rotulo: 'Assinatura digitalizada (opcional)',
+            base64Atual: _assinaturaBase64,
+            definir: (v) => _assinaturaBase64 = v,
           ),
           const SizedBox(height: 24),
           ElevatedButton(
