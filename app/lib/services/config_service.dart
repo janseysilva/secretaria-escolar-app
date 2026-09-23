@@ -2,13 +2,10 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Endereço do servidor que gera os documentos (documentos.py por trás).
-/// Por enquanto aponta pro "localhost" do próprio celular - funciona
-/// porque o teste usa "adb reverse" (cabo USB), que faz o celular
-/// enxergar a porta 8123 do computador como se fosse dele mesmo. Quando
-/// o servidor for hospedado de verdade na internet, troca esse
-/// endereço pelo definitivo (não vai precisar mais de cabo).
-const String kApiBaseUrl = 'http://127.0.0.1:8123';
+/// Endereço do servidor que gera os documentos (documentos.py por trás),
+/// hospedado de verdade no Render - funciona de qualquer lugar, sem
+/// precisar estar na mesma rede nem conectar por cabo.
+const String kApiBaseUrl = 'https://secretaria-escolar-app.onrender.com';
 
 const _chaveDadosEscola = 'dados_escola';
 
